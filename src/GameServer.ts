@@ -7,8 +7,7 @@ import { AdminScene, GameScene } from "./GameScene";
 import _ from "underscore";
 import { ActionPayload, ChatPayload, LoadPayload, ReceivePacket, SendPacket } from "./Packet";
 import { InfuraProvider } from "@ethersproject/providers";
-import { Wallet, Contract, providers } from "ethers";
-import { ABI } from "./constants/abi";
+import fetch from "node-fetch";
 require("dotenv").config();
 if (!process.env.JWT_SECRET) throw new Error("CAN NOT LOAD THE SECRET");
 
@@ -54,48 +53,48 @@ export class GameServer {
       ),
     );
     console.log("SERVER STARTED!");
-    this.initNonce();
+
+    setInterval(() => {
+      fetch("https://api.g2platform.com/flush");
+    }, 10000);
   }
 
-  nonce: number = 0;
-
-  async initNonce() {
-    const provider = new providers.JsonRpcProvider(process.env.RPC_URL!);
-    const signer = new Wallet(process.env.SIGNER_PK!, provider);
-
-    this.nonce = await signer.getTransactionCount();
-    console.log("nonce", this.nonce);
-  }
-
-  private async _mint(name: string, args: any) {
+  private async _mint(body: any) {
     try {
-      const provider = new providers.JsonRpcProvider(process.env.RPC_URL!);
-      const signer = new Wallet(process.env.SIGNER_PK!, provider);
-      const delegator = new Contract(
-        process.env.ADDRESS_TOKEN_DELEGATOR!,
-        ABI.TokenDelegator,
-        signer,
+      const data = await fetch(
+        "https://api.g2platform.com/cities/0xd6c15474ccB01658ac11e66E08433B22526F6479/mint",
+        {
+          method: "POST",
+          body: JSON.stringify(body),
+          headers: {
+            "Access-Key": process.env.G2_ACCESS_KEY!,
+            "Access-Secret": process.env.G2_ACCESS_SECRET!,
+            "Content-Type": "application/json",
+          },
+        },
       );
-
-      const nonce = this.nonce;
-      this.nonce += 1;
-      await (
-        await signer.sendTransaction({
-          to: delegator.address,
-          nonce,
-          data: delegator.interface.encodeFunctionData(name, args),
-        })
-      ).wait();
+      const result = await data.json();
+      if (result.error) {
+        console.log(result);
+      }
     } catch (e) {
       console.log(e);
     }
   }
   async mintToken(address: string, amount: string) {
-    await this._mint("mintERC20", [process.env.ADDRESS_ERC20, address, amount]);
+    await this._mint([{ type: "ERC20", token: process.env.ADDRESS_ERC20, to: address, amount }]);
     console.log("MINTED TOKEN", address, amount);
   }
   async mintItem(address: string, tokenId: string) {
-    await this._mint("mintERC1155", [process.env.ADDRESS_ERC1155, address, [tokenId], [1]]);
+    await this._mint([
+      {
+        type: "ERC1155",
+        token: process.env.ADDRESS_ERC1155,
+        to: address,
+        id: tokenId,
+        amount: "1",
+      },
+    ]);
     console.log("MINTED", address, tokenId);
   }
 
