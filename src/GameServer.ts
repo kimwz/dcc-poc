@@ -62,7 +62,7 @@ export class GameServer {
   private async _mint(body: any) {
     try {
       const data = await fetch(
-        "https://api.g2platform.com/cities/0xd6c15474ccB01658ac11e66E08433B22526F6479/mint",
+        "https://api.g2platform.com/cities/0x57036AF5D249abc450D5858a5cb1AF1c9fA69249/mint",
         {
           method: "POST",
           body: JSON.stringify(body),
