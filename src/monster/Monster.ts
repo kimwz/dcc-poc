@@ -180,11 +180,12 @@ export class Monster {
 
   setPosition(position: PositionType) {
     const { gridX: exGridX, gridY: exGridY } = Grid.from(this.position);
-    const { gridX, gridY } = Grid.from(position);
+    let { gridX, gridY } = Grid.from(position);
     if (exGridX !== gridX || exGridY !== gridY) {
       if (this.gameScene.grid[exGridY][exGridX] === this.id) {
         this.gameScene.grid[exGridY][exGridX] = 0;
       }
+
       this.gameScene.grid[gridY][gridX] = this.id;
     }
 

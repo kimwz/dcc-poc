@@ -16,6 +16,7 @@
     "@timohausmann/quadtree-js": "^1.2.5",
     "@types/ws": "^8.5.4",
     "dotenv": "^16.0.3",
+    "jimp": "^1.6.0",
     "js-binary": "^1.2.0",
     "js-quadtree": "^3.3.6",
     "jsonwebtoken": "^9.0.0",

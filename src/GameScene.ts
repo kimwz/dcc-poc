@@ -11,6 +11,8 @@ import Collision from "./utils/Collision";
 import { Grid } from "./utils/Grid";
 import { FieldItem } from "./item/FieldItem";
 import { utils } from "ethers";
+import { GameModMonsterData, GameModSceneData } from "./types";
+import { intToRGBA, Jimp } from "jimp";
 
 export type ScenePortalType = {
   x: number;
@@ -22,6 +24,7 @@ export type ScenePortalType = {
 export class GameScene {
   gameServer: GameServer;
   name: SceneName;
+  sceneData: GameModSceneData;
   width: number;
   height: number;
   grid: Array<Array<number>> = [[]];
@@ -33,164 +36,131 @@ export class GameScene {
 
   fieldItems: FieldItem[] = [];
 
-  obstacles = [
-    { type: "line", data: [3576, 2323, 3553, 2402] },
-    { type: "line", data: [3463, 2210, 3576, 2323] },
-    { type: "line", data: [3447, 2111, 3463, 2210] },
-    { type: "line", data: [3169, 2088, 3447, 2111] },
-    { type: "line", data: [2801, 2148, 3169, 2088] },
-    { type: "line", data: [2586, 2404, 2801, 2148] },
-    { type: "square", data: [2991, 1476, 60, 72] },
-    { type: "circle", data: [2968, 1602, 52] },
-    { type: "line", data: [3655, 660, 3782, 663] },
-    { type: "line", data: [2987, 319, 3655, 660] },
-    { type: "line", data: [2849, 465, 2987, 319] },
-    { type: "line", data: [2022, 615, 2849, 465] },
-    { type: "line", data: [999, 1357, 2022, 615] },
-    { type: "line", data: [890, 1609, 999, 1357] },
-    { type: "line", data: [1008, 1682, 883, 1610] },
-    { type: "line", data: [1106, 1569, 1008, 1682] },
-    { type: "line", data: [1208, 1780, 1106, 1569] },
-    { type: "line", data: [3559, 2359, 3598, 2511] },
-    { type: "line", data: [2528, 2564, 2650, 2322] },
-    { type: "circle", data: [3072, 1609, 49] },
-    { type: "circle", data: [3021, 1610, 48] },
-    { type: "line", data: [1160, 1782, 1635, 2059] },
-    { type: "line", data: [1648, 2287, 1546, 2347] },
-    { type: "line", data: [1648, 2056, 1657, 2281] },
-    { type: "line", data: [1538, 2344, 1375, 2287] },
-    { type: "line", data: [1375, 2295, 1678, 2541] },
-    { type: "line", data: [1682, 2539, 1776, 2454] },
-    { type: "line", data: [1774, 2446, 1823, 2377] },
-    { type: "line", data: [1810, 2278, 1813, 2380] },
-    { type: "line", data: [1821, 2254, 1900, 2197] },
-    { type: "line", data: [1910, 2205, 2530, 2568] },
-    { type: "line", data: [3795, 642, 4058, 751] },
-    { type: "line", data: [4061, 737, 4191, 720] },
-    { type: "line", data: [4192, 731, 4231, 933] },
-    { type: "line", data: [4246, 931, 4636, 1103] },
-    { type: "line", data: [4651, 1105, 4852, 1077] },
-    { type: "line", data: [4860, 1087, 5027, 1155] },
-    { type: "line", data: [5033, 1163, 5181, 1393] },
-    { type: "line", data: [5193, 1405, 5265, 1504] },
-    { type: "line", data: [5264, 1524, 4784, 1793] },
-    { type: "line", data: [4760, 1786, 4619, 1609] },
-    { type: "line", data: [4590, 1596, 4435, 1735] },
-    { type: "line", data: [4432, 1745, 4450, 1952] },
-    { type: "line", data: [4446, 1957, 4245, 2052] },
-    { type: "line", data: [4240, 2042, 4089, 1881] },
-    { type: "line", data: [4076, 1890, 3938, 2033] },
-    { type: "line", data: [3935, 2040, 3973, 2292] },
-    { type: "line", data: [3959, 2298, 3801, 2383] },
-    { type: "line", data: [3791, 2368, 3711, 2195] },
-    { type: "line", data: [3697, 2199, 3583, 2393] },
-  ];
   constructor(
     gameServer: GameServer,
     name: SceneName,
-    width: number,
-    height: number,
-    startPositions: PositionType[],
-    scenePortals: ScenePortalType[] = [],
+    grid: Array<Array<number>>,
+    sceneData: GameModSceneData,
   ) {
     this.gameServer = gameServer;
     this.name = name;
-    this.width = width;
-    this.height = height;
-    this.startPositions = startPositions;
-    this.scenePortals = scenePortals;
-    this.createGrid();
+    this.sceneData = sceneData;
+    this.width = sceneData.width;
+    this.height = sceneData.height;
+    this.startPositions = sceneData.startPositions;
+    this.scenePortals = sceneData.portals;
+    this.grid = grid;
     this.monsterManager = new MonsterManager(this);
-
-    this.initMonsterManager();
+    this.initMonsterManager(sceneData.monsters);
   }
 
-  initMonsterManager() {
-    const token = new FieldItem(this, "306043", 1);
-    for (let i = 0; i < 10; i++) {
-      const items = [token, new FieldItem(this, "306049", 0.5)];
+  initMonsterManager(monsters: GameModMonsterData[]) {
+    for (const monster of monsters) {
       this.monsterManager.registMonster(
-        new Monster(
-          this,
-          _.sample(["201000", "201001", "201002", "201004", "201008"]) || "201000",
-          {
-            canSpawnPositions: [[_.random(1797, 3902), _.random(851, 2088)]],
-            canMoveAreaFromSpawnPosition: [
-              [-100, 0],
-              [100, 0],
-            ],
-            spawnGap: _.random(3000, 5000),
-            items,
-          },
-        ),
+        new Monster(this, monster.monsterId, {
+          maxHp: monster.hp,
+          speed: monster.speed,
+          canSpawnPositions: monster.spawnPositions,
+          canMoveAreaFromSpawnPosition: [
+            [-100, 0],
+            [100, 0],
+          ],
+          spawnGap: _.random(3000, 5000),
+          items: monster.dropItems.map((item) => new FieldItem(this, item.itemId, item.chance)),
+        }),
       );
     }
 
-    this.monsterManager.registMonster(
-      new Monster(this, "203003", {
-        maxHp: 10000,
-        speed: 40,
-        canSpawnPositions: [[_.random(1797, 3902), _.random(851, 2088)]],
-        canMoveAreaFromSpawnPosition: [
-          [-300, 0],
-          [300, 0],
-        ],
-        spawnGap: _.random(3000, 5000),
-        items: [
-          token,
-          new FieldItem(this, "100000", 1),
-          new FieldItem(this, "301000", 0.7),
-          new FieldItem(this, "303404", 0.7),
-          new FieldItem(this, "500000", 0.7),
-        ],
-      }),
-    );
+    if (monsters.length <= 1) {
+      const token = new FieldItem(this, "306043", 1);
+      for (let i = 0; i < 10; i++) {
+        const items = [token, new FieldItem(this, "306049", 0.5)];
+        this.monsterManager.registMonster(
+          new Monster(
+            this,
+            _.sample(["201000", "201001", "201002", "201004", "201008"]) || "201000",
+            {
+              canSpawnPositions: [[_.random(1797, 3902), _.random(851, 2088)]],
+              canMoveAreaFromSpawnPosition: [
+                [-100, 0],
+                [100, 0],
+              ],
+              spawnGap: _.random(3000, 5000),
+              items,
+            },
+          ),
+        );
+      }
 
-    this.monsterManager.registMonster(
-      new Monster(this, "204012", {
-        maxHp: 100,
-        speed: 40,
-        canSpawnPositions: [[_.random(1797, 3902), _.random(851, 2088)]],
-        canMoveAreaFromSpawnPosition: [
-          [-300, 0],
-          [300, 0],
-        ],
-        spawnGap: _.random(3000, 5000),
-        items: [new FieldItem(this, "10153000", 1)],
-      }),
-    );
-    this.monsterManager.registMonster(
-      new Monster(this, "204012", {
-        maxHp: 100,
-        speed: 40,
-        canSpawnPositions: [[_.random(1797, 3902), _.random(851, 2088)]],
-        canMoveAreaFromSpawnPosition: [
-          [-300, 0],
-          [300, 0],
-        ],
-        spawnGap: _.random(3000, 5000),
-        items: [new FieldItem(this, "10153000", 1)],
-      }),
-    );
-    this.monsterManager.registMonster(
-      new Monster(this, "204012", {
-        maxHp: 100,
-        speed: 40,
-        canSpawnPositions: [[_.random(1797, 3902), _.random(851, 2088)]],
-        canMoveAreaFromSpawnPosition: [
-          [-300, 0],
-          [300, 0],
-        ],
-        spawnGap: _.random(3000, 5000),
-        items: [new FieldItem(this, "10153000", 1)],
-      }),
-    );
+      this.monsterManager.registMonster(
+        new Monster(this, "203003", {
+          maxHp: 10000,
+          speed: 40,
+          canSpawnPositions: [[_.random(1797, 3902), _.random(851, 2088)]],
+          canMoveAreaFromSpawnPosition: [
+            [-300, 0],
+            [300, 0],
+          ],
+          spawnGap: _.random(3000, 5000),
+          items: [
+            token,
+            new FieldItem(this, "100000", 1),
+            new FieldItem(this, "301000", 0.7),
+            new FieldItem(this, "303404", 0.7),
+            new FieldItem(this, "500000", 0.7),
+          ],
+        }),
+      );
+
+      this.monsterManager.registMonster(
+        new Monster(this, "204012", {
+          maxHp: 100,
+          speed: 40,
+          canSpawnPositions: [[_.random(1797, 3902), _.random(851, 2088)]],
+          canMoveAreaFromSpawnPosition: [
+            [-300, 0],
+            [300, 0],
+          ],
+          spawnGap: _.random(3000, 5000),
+          items: [new FieldItem(this, "10153000", 1)],
+        }),
+      );
+      this.monsterManager.registMonster(
+        new Monster(this, "204012", {
+          maxHp: 100,
+          speed: 40,
+          canSpawnPositions: [[_.random(1797, 3902), _.random(851, 2088)]],
+          canMoveAreaFromSpawnPosition: [
+            [-300, 0],
+            [300, 0],
+          ],
+          spawnGap: _.random(3000, 5000),
+          items: [new FieldItem(this, "10153000", 1)],
+        }),
+      );
+      this.monsterManager.registMonster(
+        new Monster(this, "204012", {
+          maxHp: 100,
+          speed: 40,
+          canSpawnPositions: [[_.random(1797, 3902), _.random(851, 2088)]],
+          canMoveAreaFromSpawnPosition: [
+            [-300, 0],
+            [300, 0],
+          ],
+          spawnGap: _.random(3000, 5000),
+          items: [new FieldItem(this, "10153000", 1)],
+        }),
+      );
+    }
   }
 
-  createGrid() {
-    const { gridX: gridWidth, gridY: gridHeight } = Grid.from([this.width, this.height]);
-    const createGridArray = (gridRows: number, gridColumns: number, gridSize: number) => {
+  static async createGrid(width: number, height: number, collisionImage: string) {
+    const { gridX: gridWidth, gridY: gridHeight } = Grid.from([width + 20, height + 20]);
+
+    const createGridArray = async (gridRows: number, gridColumns: number, gridSize: number) => {
       const grid = new Array(gridRows);
+
+      const img = await Jimp.read(collisionImage);
 
       for (let i = 0; i < gridRows; i++) {
         grid[i] = new Array(gridColumns);
@@ -199,10 +169,15 @@ export class GameScene {
           const x = j * gridSize;
           const y = i * gridSize;
 
-          if (this.obstacles.some((wall) => Collision.check(x, y, gridSize, gridSize, wall))) {
-            grid[i][j] = 1;
+          const imgX = Math.floor((x / width) * img.bitmap.width);
+          const imgY = Math.floor((y / height) * img.bitmap.height);
+          const pixel = img.getPixelColor(imgX, imgY);
+          const rgba = intToRGBA(pixel);
+
+          if (rgba.r === 255 && rgba.g === 255 && rgba.b === 255) {
+            grid[i][j] = 0; // white
           } else {
-            grid[i][j] = 0;
+            grid[i][j] = 1; // non-white
           }
         }
       }
@@ -210,7 +185,7 @@ export class GameScene {
       return grid;
     };
 
-    this.grid = createGridArray(gridHeight, gridWidth, Grid.size);
+    return await createGridArray(gridHeight, gridWidth, Grid.size);
   }
 
   extractSubGrid(centerX: number, centerY: number, size: number) {
@@ -281,6 +256,8 @@ export class GameScene {
         });
       } else if (item.typeId === "306043") {
         this.gameServer.mintToken(
+          client.bondingCurveToken,
+          client.verseAddress,
           client.address!,
           utils.parseEther(_.random(1, 10).toString()).toString(),
         );

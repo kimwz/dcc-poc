@@ -2,6 +2,7 @@ import WebSocket from "ws";
 import { SceneName } from "./GameServer";
 import { SendPacket } from "./Packet";
 import { Item } from "./item/Item";
+import { VerseData } from "./types";
 
 export type TraitsType = number[];
 export type PositionType = [number, number];
@@ -22,13 +23,25 @@ export class GameClient {
   clientId: string;
   address?: string;
   socket: WebSocket;
-  scene: SceneName = "MAIN";
+  verseData: VerseData;
+  verseAddress: string;
+  bondingCurveToken: string;
+  scene: SceneName = "";
 
   items: Item[] = [];
   avatar?: Avatar;
 
-  constructor(clientId: string, socket: WebSocket) {
+  constructor(
+    clientId: string,
+    verseAddress: string,
+    bondingCurveToken: string,
+    verseData: VerseData,
+    socket: WebSocket,
+  ) {
     this.clientId = clientId;
+    this.verseData = verseData;
+    this.verseAddress = verseAddress;
+    this.bondingCurveToken = bondingCurveToken;
     this.socket = socket;
   }
 

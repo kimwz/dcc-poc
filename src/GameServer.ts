@@ -6,73 +6,36 @@ import { Avatar, GameClient } from "./GameClient";
 import { AdminScene, GameScene } from "./GameScene";
 import _ from "underscore";
 import { ActionPayload, ChatPayload, LoadPayload, ReceivePacket, SendPacket } from "./Packet";
-import { InfuraProvider } from "@ethersproject/providers";
 import fetch from "node-fetch";
+import { VerseData } from "./types";
 require("dotenv").config();
 if (!process.env.JWT_SECRET) throw new Error("CAN NOT LOAD THE SECRET");
 
 export const server = new WebSocket.Server({ port: 8080 });
 
-export type SceneName = "MAIN" | "ADMIN" | "DUNGEON_1";
+export type SceneName = string;
 
-const Scenes: SceneName[] = ["MAIN", "DUNGEON_1"];
+const verseDataCache = Object();
 
 export class GameServer {
   clients = new Map<string, GameClient>();
 
   gameScenes = new Map<SceneName, GameScene>();
   constructor() {
-    const provider = new InfuraProvider(5, "925d6202f06643a99a075ddd8e3d70af");
-
-    this.gameScenes.set(
-      "MAIN",
-      new GameScene(
-        this,
-        "MAIN",
-        2048 * 3,
-        1304 * 3,
-        [
-          [3072, 2000],
-          [3052, 1950],
-        ],
-        [{ x: 1624, y: 2372, w: 100, h: 100, sceneName: "ADMIN" }],
-      ),
-    );
-    this.gameScenes.set(
-      "ADMIN",
-      new AdminScene(
-        this,
-        "ADMIN",
-        2048 * 3,
-        1304 * 3,
-        [
-          [3072, 2000],
-          [3052, 1950],
-        ],
-        [{ x: 1624, y: 2372, w: 100, h: 100, sceneName: "MAIN" }],
-      ),
-    );
     console.log("SERVER STARTED!");
-
-    setInterval(() => {
-      fetch("https://api.g2platform.com/flush");
-    }, 10000);
   }
 
   private async _mint(body: any) {
     try {
-      const data = await fetch(
-        "https://api.g2platform.com/cities/0x57036AF5D249abc450D5858a5cb1AF1c9fA69249/mint",
-        {
-          method: "POST",
-          body: JSON.stringify(body),
-          headers: {
-            "Access-Key": process.env.G2_ACCESS_KEY!,
-            "Access-Secret": process.env.G2_ACCESS_SECRET!,
-            "Content-Type": "application/json",
-          },
+      const data = await fetch("https://api.g2platform.com/ops", {
+        method: "POST",
+        body: JSON.stringify(body),
+        headers: {
+          "Access-Key": process.env.G2_ACCESS_KEY!,
+          "Access-Secret": process.env.G2_ACCESS_SECRET!,
+          "Content-Type": "application/json",
         },
-      );
+      });
       const result = await data.json();
       if (result.error) {
         console.log(result);
@@ -81,20 +44,31 @@ export class GameServer {
       console.log(e);
     }
   }
-  async mintToken(address: string, amount: string) {
-    await this._mint([{ type: "ERC20", token: process.env.ADDRESS_ERC20, to: address, amount }]);
-    console.log("MINTED TOKEN", address, amount);
+  async mintToken(tokenAddress: string, verseAddress: string, address: string, amount: string) {
+    await this._mint({
+      verse: verseAddress,
+      ops: [
+        {
+          type: "MINT_ERC20",
+          token: tokenAddress,
+          account: address,
+          amount,
+          toEOA: true,
+        },
+      ],
+    });
+    console.log("MINTED TOKEN", tokenAddress, address, amount);
   }
   async mintItem(address: string, tokenId: string) {
-    await this._mint([
-      {
-        type: "ERC1155",
-        token: process.env.ADDRESS_ERC1155,
-        to: address,
-        id: tokenId,
-        amount: "1",
-      },
-    ]);
+    // await this._mint([
+    //   {
+    //     type: "ERC1155",
+    //     token: process.env.ADDRESS_ERC1155,
+    //     to: address,
+    //     id: tokenId,
+    //     amount: "1",
+    //   },
+    // ]);
     console.log("MINTED", address, tokenId);
   }
 
@@ -107,7 +81,7 @@ export class GameServer {
 
   packetReceiver(data: ReceivePacket, socket: WebSocket) {
     if (data.type === "JOIN") {
-      this.joinGame(data.clientId, socket);
+      this.joinGame(data.clientId, data.payload, socket);
     } else if (data.type === "LOAD" && data.jwt) {
       this.loadAvatarAndScene(data.clientId, data.jwt, data.payload);
     } else if (data.type === "READY" && data.jwt) {
@@ -121,12 +95,29 @@ export class GameServer {
     }
   }
 
-  joinGame(clientId: string, socket: WebSocket) {
+  async joinGame(clientId: string, payload: any, socket: WebSocket) {
     if (this.clients.has(clientId)) {
       this.disconnect(clientId);
     }
 
-    const client = new GameClient(clientId, socket);
+    const verseAddress = payload.verse;
+    const res = await fetch(`https://api.g2platform.com/verses/${verseAddress}`);
+    const { verse } = await res.json();
+    let verseData: VerseData = verseDataCache[verse.dataURI];
+
+    if (!verseData) {
+      verseData = (await (await fetch(verse.dataURI)).json()) as VerseData;
+      verseDataCache[verse.dataURI] = verseData;
+    }
+    for (const scene of verseData.mod.data.scenes) {
+      const sceneId = `${verseAddress}/${verseData.mod.data.version}/${scene.id}`;
+      if (!this.gameScenes.has(sceneId)) {
+        const grid = await GameScene.createGrid(scene.width, scene.height, scene.collisionImage);
+        this.gameScenes.set(sceneId, new GameScene(this, sceneId, grid, scene));
+      }
+    }
+    const bondingCurveToken = verse.bondingCurveToken[0];
+    const client = new GameClient(clientId, verseAddress, bondingCurveToken, verseData, socket);
     client.jwt = jwt.sign(clientId, process.env.JWT_SECRET!);
     this.clients.set(clientId, client);
     this.sendPacket(clientId, { type: "JOIN", clientId, payload: { jwt: client.jwt } });
@@ -141,7 +132,8 @@ export class GameServer {
       const traits = DCCTraits[payload.dccId];
       const avatar = new Avatar(payload.nickname, traits, [3072, 2000]);
       client.avatar = avatar;
-      this.enterScene("MAIN", client);
+      const sceneId = `${client.verseAddress}/${client.verseData.mod.data.version}/${client.verseData.mod.data.entryScene}`;
+      this.enterScene(sceneId, client);
     }
   }
 
