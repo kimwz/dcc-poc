@@ -1,3 +1,4 @@
+import http from "http";
 import WebSocket from "ws";
 import { Box, QuadTree } from "js-quadtree";
 import jwt from "jsonwebtoken";
@@ -11,7 +12,18 @@ import { VerseData } from "./types";
 require("dotenv").config();
 if (!process.env.JWT_SECRET) throw new Error("CAN NOT LOAD THE SECRET");
 
-export const server = new WebSocket.Server({ port: 8080 });
+const httpServer = http.createServer((req, res) => {
+  if (req.url === "/health") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ status: "ok" }));
+  } else {
+    res.writeHead(404);
+    res.end();
+  }
+});
+httpServer.listen(8080);
+
+export const server = new WebSocket.Server({ server: httpServer });
 
 export type SceneName = string;
 
