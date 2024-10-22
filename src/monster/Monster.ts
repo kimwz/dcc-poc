@@ -64,11 +64,15 @@ export class Monster {
 
     setTimeout(() => {
       setInterval(() => {
-        this.watchEnemy();
+        try {
+          this.watchEnemy();
+        } catch (e) {}
       }, 1000);
       setInterval(() => {
         if (this.enableAutoMove) {
-          this.autoMove();
+          try {
+            this.autoMove();
+          } catch (e) {}
         }
       }, 100);
     }, _.random(0, 1000));

@@ -155,7 +155,7 @@ export class GameScene {
   }
 
   static async createGrid(width: number, height: number, collisionImage: string) {
-    const { gridX: gridWidth, gridY: gridHeight } = Grid.from([width + 20, height + 20]);
+    const { gridX: gridWidth, gridY: gridHeight } = Grid.from([width, height]);
 
     const createGridArray = async (gridRows: number, gridColumns: number, gridSize: number) => {
       const grid = new Array(gridRows);
